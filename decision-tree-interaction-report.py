@@ -95,10 +95,12 @@ for idx in range(finder.n_nodes):
 		except IndexError:
 			break
 		else:
-			next_feature = finder.feature_names[next_idx]
-			feature_combos[frozenset({curr_feature, next_feature})] += 1
+			next_node_is_leaf = finder.is_leaves[next_idx]
+			if not next_node_is_leaf:
+				next_feature = finder.feature_names[next_idx]
+				feature_combos[frozenset({curr_feature, next_feature})] += 1
 
-		
-	finder.children_left[idx],
-			finder.feature_names[finder.feature[idx]],
-			finder.children_right[idx]
+from pprint import pprint
+
+pprint(sorted(feature_combos.items(), key=lambda x: -x[1])[:25])
+pprint(sorted(zip(feature_names, model.feature_importances_), key=lambda x: -x[1]))
