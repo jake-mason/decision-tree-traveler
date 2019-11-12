@@ -1,6 +1,7 @@
-import numpy as np
+'''
 from sklearn.datasets import load_boston
 from sklearn.tree import DecisionTreeRegressor
+from dtree_interaction import TreeInteractionFinder
 
 bunch = load_boston()
 
@@ -14,6 +15,13 @@ model = DecisionTreeRegressor(
 
 model.fit(X, y)
 
+finder = TreeInteractionFinder(model, feature_names)
+'''
+
+from collections import defaultdict
+
+import numpy as np
+
 class TreeInteractionFinder(object):
 
 	def __init__(
@@ -22,6 +30,15 @@ class TreeInteractionFinder(object):
 		feature_names = None):
 
 		self.model = model
+
+		if isinstance(feature_names, np.ndarray):
+			criterion = feature_names.size == 0
+		else:
+			criterion = not feature_names
+
+		if criterion:
+			feature_names = list(range(model.n_features_))
+
 		self.feature_names = feature_names
 
 		self._parse_tree_structure()
@@ -56,51 +73,33 @@ class TreeInteractionFinder(object):
 		self.is_leaves = is_leaves
 		self.node_depth = node_depth
 
-	def node_and_leaf_print(self):
+	def find_interactions(self):
+		'''
+		Crawl tree and find potential interactions by
+		looking at which features tend to follow particular
+		features as the tree is traversed
+
+		Note: this only works for single-tree classifiers (i.e.
+		this has only been tested on
+		sklearn.tree.DecisionTreeClassifier/DecisionTreeRegressor)
+		'''
+
+		feature_combos = defaultdict(int)
+
 		for idx in range(self.n_nodes):
-			node_prefix_fmter = '{}Node #{} (samples: {}'.format
-			node_str = node_prefix_fmter(
-				self.node_depth[idx] * '  ',
-				idx,
-				self.n_node_samples[idx]
-			)
-			dominant_prediction = self.predicted_values[idx].argmax()
+			curr_node_is_leaf = self.is_leaves[idx]
+			curr_feature = self.feature_names[self.feature[idx]]
+			if not curr_node_is_leaf:
+				# Test to see if we're at the end of the tree
+				try:
+					next_idx = self.feature[idx + 1]
+				except IndexError:
+					break
+				else:
+					next_node_is_leaf = self.is_leaves[next_idx]
+					if not next_node_is_leaf:
+						next_feature = self.feature_names[next_idx]
+						feature_combos[frozenset({curr_feature, next_feature})] += 1
 
-			if self.is_leaves[idx]:
-				node_str += '; final prediction: {:.2f})'.format(dominant_prediction)
-				node_str += ' - leaf'
-			else:
-				node_str += '; dominant prediction: {:.2f}'.format(dominant_prediction)
-				addl_metadata = ' - decision: go to node #{} if `{}` <= {:.2f} else to node #{}.'.format(
-					self.children_left[idx],
-					self.feature_names[self.feature[idx]],
-					self.threshold[idx],
-					self.children_right[idx]
-				)
-				node_str += addl_metadata
-			print(node_str)
-
-finder = TreeInteractionFinder(model, feature_names)
-from collections import defaultdict
-
-feature_combos = defaultdict(int)
-
-for idx in range(finder.n_nodes):
-	curr_node_is_leaf = finder.is_leaves[idx]
-	curr_feature = finder.feature_names[finder.feature[idx]]
-	if not curr_node_is_leaf:
-		# Test to see if we're at the end of the tree
-		try:
-			next_idx = finder.feature[idx + 1]
-		except IndexError:
-			break
-		else:
-			next_node_is_leaf = finder.is_leaves[next_idx]
-			if not next_node_is_leaf:
-				next_feature = finder.feature_names[next_idx]
-				feature_combos[frozenset({curr_feature, next_feature})] += 1
-
-from pprint import pprint
-
-pprint(sorted(feature_combos.items(), key=lambda x: -x[1])[:25])
-pprint(sorted(zip(feature_names, model.feature_importances_), key=lambda x: -x[1]))
+		self.feature_combos = feature_combos
+		return feature_combos
